@@ -1,0 +1,12 @@
+{application, easymmo_client,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { easymmo_client_app, []}},
+  {env, []}
+ ]}.
