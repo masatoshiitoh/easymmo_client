@@ -31,8 +31,7 @@ init(_Args) ->
 %% 受信ループは、手元のプロセスとして起動する。
 start_service(ServerIp, ToClientEx, FromClientEx)
 	when is_binary(ToClientEx), is_binary(FromClientEx) ->
-	Pid = spawn_link(fun() -> start_loop(ServerIp, ToClientEx, FromClientEx) end),
-	Reply = gen_server:call(?MODULE, {start_service, ServerIp, ToClientEx, FromClientEx, Pid}).
+	Reply = gen_server:call(?MODULE, {start_service, ServerIp, ToClientEx, FromClientEx}).
 
 run() ->
 	start_service("27.120.111.23", <<"xout">>, <<"xin">>),
@@ -89,49 +88,32 @@ shutdown_connect(Connection, ChTC, ChFC) ->
     ok = amqp_connection:close(Connection),
 	ok.
 
-
-start_loop(ServerIp, ToClientEx, FromClientEx) ->
-	{Connection, ChTC, ChFC} = setup_connection(ServerIp, ToClientEx, FromClientEx),
-    % 受信ループ。
-    ok = loop(),
-	shutdown_connect(Connection, ChTC, ChFC),
-    ok.
-
-loop() ->
-    %% 購読中は#amqp_msgでメッセージが飛んでくる。
-    receive
-        {#'basic.deliver'{}, #amqp_msg{payload = Body}} ->
-            io:format(" [x] ~p~n", [Body]),
-            loop();
-        _ -> ok
-    end.
-
 %% gen_server behaviour %%
 terminate(Reason, State) ->
-	{ServerIp, ToClientEx, FromClientEx, Pid, {Connection, ChTC, ChFC}} = State,
+	{ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}} = State,
 	%% コネクション停止
 	shutdown_connect(Connection, ChTC, ChFC),
-	%% 別途起動のプロセスへの停止メッセージの送信
-	Pid ! "stop",
     ok.
 
 handle_info( {#'basic.deliver'{}, #amqp_msg{payload = Body}} , State) ->
 	io:format(" [x] ~p~n", [Body]),
-	{reply, ok, State};
+	{noreply, State};
 
 handle_info("stop", State) ->
+	{ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}} = State,
+	shutdown_connect(Connection, ChTC, ChFC),
 	{stop, ok, State}.
 
-handle_call({start_service, ServerIp, ToClientEx, FromClientEx, Pid}, From, State) ->
+handle_call({start_service, ServerIp, ToClientEx, FromClientEx}, From, State) ->
 	{Connection, ChTC, ChFC} = setup_connection(ServerIp, ToClientEx, FromClientEx),
-	NewState = {ServerIp, ToClientEx, FromClientEx, Pid, {Connection, ChTC, ChFC}},
+	NewState = {ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}},
     {reply, ok, NewState};
 
 handle_call({send, Text}, From, State) when is_list(Text) ->
 	handle_call({send, list_to_binary(Text)}, From, State);
 
 handle_call({send, Message}, From, State) when is_binary(Message) ->
-	{ServerIp, ToClientEx, FromClientEx, Pid, {Connection, ChTC, ChFC}} = State,
+	{ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}} = State,
     %% Message = <<"player1: Hello World!">>,
     % エクスチェンジにメッセージ送信。
     amqp_channel:cast(ChFC,
