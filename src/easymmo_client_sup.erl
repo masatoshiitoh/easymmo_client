@@ -23,5 +23,21 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    {ok, { {one_for_one, 5, 10}, []} }.
+	ChildSpec = [
+	client()
+	],
+    {ok, { {one_for_one, 5, 10}, ChildSpec} }.
+
+
+client() ->
+    client_one("localhost", <<"xout">>, <<"xin">> ).
+
+client_one(ServerIp, ToClientEx, FromClientEx) ->
+    ID = move_srv,
+    StartFunc = {player1, start_link, [ServerIp, ToClientEx, FromClientEx]},
+    Restart = permanent,
+    Shutdown = brutal_kill,
+    Type = worker,
+    Modules = [player1],
+    _ChildSpec = {ID, StartFunc, Restart, Shutdown, Type, Modules}.
 
