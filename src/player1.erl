@@ -7,6 +7,7 @@
 -export([handle_info/2]).
 
 -export([move/2]).
+-export([chat/1]).
 
 %%
 start_link(ServerIp, ToClientEx, FromClientEx) ->
@@ -23,7 +24,13 @@ init(Args) ->
 %%
 
 move(X, Y) ->
-	gen_server:call(?MODULE, {send, io_lib:format("move ~p ~p~n", [X,Y])}).
+	gen_server:call(?MODULE, {move, X, Y}).
+
+chat(Body) when is_binary(Body)->
+	gen_server:call(?MODULE, {chat, Body});
+
+chat(Body) ->
+	gen_server:call(?MODULE, {chat, list_to_binary(Body)}).
 
 %%
 %% Internal use.
@@ -79,18 +86,33 @@ handle_info( {#'basic.deliver'{}, #amqp_msg{payload = Body}} , State) ->
 	io:format("Received. ~p~n", [binary_to_list(Body)]),
     {noreply, State}.
 
-handle_call({send, Text}, From, State) when is_list(Text) ->
-	handle_call({send, list_to_binary(Text)}, From, State);
 
-handle_call({send, Message}, From, State) when is_binary(Message) ->
+handle_call({move, X, Y}, From, State) ->
 	{ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}} = State,
     % エクスチェンジにメッセージ送信。
+	Message = list_to_binary(io_lib:format("{~p,~p}", [X,Y])),
     amqp_channel:cast(ChFC,
-		#'basic.publish'{exchange = FromClientEx},
+		#'basic.publish'{
+			exchange = FromClientEx,
+			routing_key = <<"move.id.1">>
+			},
 		#amqp_msg{payload = Message}),
     io:format("Sent ~p~n", [binary_to_list(Message)]),
-    {reply, ok, State}.
+    {reply, ok, State};
 
+
+handle_call({chat, Message}, From, State) when is_list(Message) ->
+	{ServerIp, ToClientEx, FromClientEx, {Connection, ChTC, ChFC}} = State,
+	BinMsg = list_to_binary(Message),
+    % エクスチェンジにメッセージ送信。
+    amqp_channel:cast(ChFC,
+		#'basic.publish'{
+			exchange = FromClientEx,
+			routing_key = <<"chat.map.1">>
+			},
+		#amqp_msg{payload = BinMsg}),
+    io:format("Sent ~p~n", [binary_to_list(BinMsg)]),
+    {reply, ok, State}.
 
 
 
